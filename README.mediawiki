@@ -1,0 +1,8 @@
+= Java_1Z0_855 =
+
+This is my project for the Java 1Z0-855 exam.
+
+It serves no greater purpose. I made it just to have a safe online repository for it.
+
+If you feel like you have a great tip and you want to contribute, you may do so.
+
