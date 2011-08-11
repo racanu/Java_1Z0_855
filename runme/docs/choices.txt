@@ -1,0 +1,15 @@
+***************************************************************************************
+* Describe significant design choices you made.                                       *
+*                                                                                     *
+* Detail the problems you perceived, the issues surrounding them, your value          *
+* judgements, and the decisions that you made.                                        *
+*                                                                                     *
+* This document should also describe any uncertainties you had regarding the project, *
+* and the decisions you made when resolving them.                                     *
+***************************************************************************************
+
+Usage of the Mac OS X JVM
+
+Assumed this is acceptable since Java is supposed to be platform independent and
+Mac OS X is one of the platforms it supports.
+

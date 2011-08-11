@@ -1,0 +1,8 @@
+*********************************************************************************
+* User documentation for the database server and the gui client.                *
+*                                                                               *
+* This may be omitted if the user documentation is online. Otherwise a single   *
+* plain ASCII file named userguide.txt or multiple HTML files accessible from a *
+* starting document called userguide.html must be provided.                     *
+*********************************************************************************
+
