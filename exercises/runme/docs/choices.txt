@@ -1,0 +1,10 @@
+
+Used an "anemic" domain model, with "dumb" domain objects that are only used to contain the data and pass it between layers.
+
+Chosen to also check the field names when validating schema.
+Mismatches in field names may indicate wrong database.
+
+Intentionally not implemented complex validation of room "rate" field.
+
+There is no combination of fields that makes sense as primary key.
+

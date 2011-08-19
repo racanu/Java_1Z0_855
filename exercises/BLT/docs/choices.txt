@@ -1,0 +1,19 @@
+
+Why a Map is used for the data store and not a List
+
+Cannot use a List for the data store because deleting records would change the record numbers and these are used in the
+interface to identify records. A client may theoretically cache record numbers that would become invalid as records are deleted by other
+client. It is however acceptable to assign different record numbers when the server starts again, therefore it is not necessary
+to persist the record numbers in the database. 
+
+Why ExcursionPrimaryKey HAS-A Excursion and not IS-A Excursion or Excursion IS-A ExcursionPrimaryKey 
+
+Although intimately linked to Excursion
+- the primary key is not so much a property of the record as it is a property of the list which the record is part of
+(i.e. one can construct different lists with different primary keys)
+- the primary key is a thin wrapper around the data record, providing only the functionality needed to avoid duplicates and/or
+to sort the records in the list.
+- the records can be stored in a list by their original insertion order and one or more keys can be created for each record
+and stored in separate lists that can be created and disposed of as needed; 
+   
+
