@@ -1,6 +1,6 @@
-package suncertify.db;
+package suncertify.persistence;
 
-public class DatabaseException extends Exception { 
+public class PersistenceException extends Exception { 
     /**
      * 
      */
@@ -8,7 +8,7 @@ public class DatabaseException extends Exception {
 
     // There is no reason for instantiating this exception from outside the package
     // hence the constructors use default access
-    DatabaseException() { }
-    DatabaseException(String message) { super(message); }
+    PersistenceException() { }
+    PersistenceException(String message) { super(message); }
 }
 

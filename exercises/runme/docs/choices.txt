@@ -1,10 +1,65 @@
 
-Used an "anemic" domain model, with "dumb" domain objects that are only used to contain the data and pass it between layers.
+Design Choice
+-------------
+Hm?!
+Used an "anemic" domain model, with "dumb" domain objects that are
+only used to contain the data and pass it between layers.
 
-Chosen to also check the field names when validating schema.
-Mismatches in field names may indicate wrong database.
 
-Intentionally not implemented complex validation of room "rate" field.
+Database Schema
+---------------
+The provided database file contains some information on the fields, such as
+their names and maximum length. However, this is not enough information to allow
+the database layer to fully validate the values supplied for each field in the
+generic String array that the DB interface prescribes.
 
-There is no combination of fields that makes sense as primary key.
+This leaves two options:
 
+1. keep the database layer "dumb" and let it "pass through" any values it receives,
+writing them to the database file unchecked; the responsibility for providing
+properly formatted values would thus fall on the shoulders of one of the higher
+layers (possibly the persistence layer); thus the formatting rules would be hardcoded
+in this layer  
+
+2. implement field value formatting requirements checks in the database layer
+(by hardcoding them) thus allowing a tighter check of the values written in the
+database file
+
+Examining the provided DB interface, we notice that there is no mechanism in place
+(e.g. an exception) to report field value problems (i.e. wrong format or wrong number
+of fields). Both options above can potentially face field value problems. However,
+when the field value format check is delegated to the database layer (option 2),
+it is essential that this layer can report the problems so that they may be reported
+to the user and corrected. When the format check takes place in higher layers (option 1),
+field value problems may really only occur due to:
+- errors in the implementation of the formatting rules in the higher layers
+- change in the database layout not accompanied by a corresponding change in the
+  persistence layer (i.e. a change in requirements not fully implemented)
+- abuse of the DB interface
+These are very unlikely events of erroneous character and as such not worth considering.
+
+Thus, option 1 seems the most attractive an will be the one to be implemented. It leaves
+the database layer with one significant error to handle: values that are too long to fit
+within the allocated length. Such errors, if left unhandled and written to the database
+file, would corrupt the entire file by creating misalignments in record and field positions.
+
+
+Duplicate Records
+-----------------
+There is no combination of fields that makes sense as a primary key,
+so there will be no check on duplicate keys. More than one record with
+exactly the same content may exist. 
+
+
+Currency Representation
+-----------------------
+Ideally, for validating currency values as the room rate, any currency
+representation should be accepted in any locale. Any mix of currencies and 
+their representations should also be supported. 
+
+The boundaries of the current assigment do not allow for such extensive coverage  
+so, for the sake of simplicity we are only accepting '$' as the currency symbol
+regardless of user's locale (because '$' is the currency used in the supplied database).
+This avoids problems when accessing the database with clients in different locales 
+and forces operators to convert all rates to USD, or use some other externally
+defined convention for representing room rates.

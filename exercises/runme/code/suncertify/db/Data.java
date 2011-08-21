@@ -1,7 +1,11 @@
 package suncertify.db;
 
+import java.text.DecimalFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.*;
 import java.io.*;
+
 import suncertify.util.*;
 
 class DatabaseFieldDefinition {
@@ -22,7 +26,13 @@ class DatabaseFieldDefinition {
         return this.fieldLength;
     }
     
-    void readFieldDefinition(DataInput di) throws SchemaException {
+    /**
+     * Reads a field definition (name and length) from the database file using the provided DataInput stream
+     * and checks if it matches the expected definition of the field.
+     * 
+     * @param di The DataInput stream from which to read the field definition.
+     */
+    void readAndCheckFieldDefinition(DataInput di) {
         try {
             byte fnl = di.readByte();
     
@@ -30,24 +40,30 @@ class DatabaseFieldDefinition {
             di.readFully(b);
             String fn = new String(b);
             if (!fn.toLowerCase().equals(fieldName)) {
-                throw new SchemaException("Field name mismatch. " + 
+                throw new DatabaseRuntimeException("Field name mismatch. " + 
                         "Expected \"" + fieldName + "\" encountered \"" + fn + "\"");
             }
             
             byte fl = di.readByte();
             
             if (fl != fieldLength) {
-                throw new SchemaException("Field length mismatch for field " + fieldName + ". " 
+                throw new DatabaseRuntimeException("Field length mismatch for field " + fieldName + ". " 
                         + "Expected " + fieldLength + " found " + fl);
             }
         } catch (EOFException e) {
-            throw new SchemaException("End of file encountered while reading schema.");
+            throw new DatabaseRuntimeException("End of file encountered while reading schema.");
         } catch (IOException e) {
-            throw new SchemaException("IO Exception while reading schema.");
+            throw new DatabaseRuntimeException("IO Exception while reading schema.");
         }
     }
     
-    String validateValue(String value) throws FieldValueException {
+    /**
+     * Gets a raw value, trims leading and trailing whitespace and truncates it to the fieldLength.  
+     * 
+     * @param value The raw value
+     * @return The trimmed value
+     */
+    String fitValue(String value) {
         try {        
             // Trim spaces and truncate excess characters
             if (value.length() > fieldLength) value = value.substring(0, fieldLength);
@@ -57,170 +73,51 @@ class DatabaseFieldDefinition {
         }
     }
     
-    String readFieldValue(DataInput di) throws DatabaseException {
+    /**
+     * Reads the value of the field from the database file through the provided DataInput stream.
+     * It reads exactly the amount of bytes corresponding to the field's length.
+     * The return value is trimmed and fitted using fitValue().
+     * 
+     * @param di The DataInput stream to read the value from.
+     * @return The fit-and-trim value for the field.
+     */
+    String readFieldValue(DataInput di) throws DatabaseRuntimeException {
         try {
             byte[] b = new byte[fieldLength];
             di.readFully(b);
-            //TODO: This might give problems if leading spaces are desirable
-            return new String(b).trim();
+            return fitValue(new String(b));
         } catch (EOFException e) {
-            throw new DatabaseException("End of file encountered while reading field value.");
+            throw new DatabaseRuntimeException("EOF encountered while reading value for field " + fieldName);
         } catch (IOException e) {
-            throw new DatabaseException("IOException encountered while reading field value.");
+            throw new DatabaseRuntimeException("IO exception encountered while reading value for field " + fieldName);
         }
     }
     
-    void writeFieldValue(DataOutput dout, String value) throws DatabaseException {
+    /**
+     * Writes the provided field value to the database file through the provided DataOutput stream.
+     * The amount of bytes written is exactly the field's length. The value is first fitted using 
+     * fitValue() to make sure it fits in the field, then padded with whitespaces at the end to fill
+     * the field's space if necessary. 
+     * 
+     * Errors that may occur during writing are silently suppressed because the DB interface does not
+     * provide for reporting them. This has the potential of corrupting the database file.
+     * 
+     * @param dout The DataOutput stream to write the value to.
+     * @param value The value to write. It is padded with whitespaces as necessary.
+     */
+    void writeFieldValue(DataOutput dout, String value) throws DatabaseRuntimeException {
         return ;
         
 /*        try {
-            if (value.length() > fieldLength) {
-                throw new FieldValueException("Actual length of value (" 
-                        + value.length() + ") larger than field length (" + fieldLength + ").");
-            }
-            
-            dout.writeBytes(value);
-            for (int i = 0; i < fieldLength - value.length(); i++)
+            dout.writeBytes(fitValue(value););
+            for (short i = 0; i < fieldLength - value.length(); i++)
             {
                 dout.writeBytes(" ");
             }
         } catch (IOException e) {
-            throw new DatabaseException("IOException encountered while reading field value.");
+            throw new DatabaseRuntimeException("IO exception encountered while writing value for field " + fieldName);
         }
 */    }
-}
-
-/**
- * 
- * @author racanu
- *
- */
-class YesNoFieldDefinition extends DatabaseFieldDefinition {
-    YesNoFieldDefinition(String name) {
-        super(name, 1);
-    }
-    
-    @Override
-    String validateValue(String value) throws FieldValueException {
-        value = super.validateValue(value);
-        value = value.toUpperCase();
-        if ( !value.equals("Y") && !value.equals("N") ) {
-            throw new FieldValueException("The value of field " + this.fieldName + " may only be Y or N");
-        }
-        return value;
-    }
-}
-
-/**
- * 
- * @author racanu
- *
- */
-class DateFieldDefinition extends DatabaseFieldDefinition {
-    DateFieldDefinition(String name) {
-        super(name, 10);
-    }
-    
-    @Override
-    String validateValue(String value) throws FieldValueException {
-        value = super.validateValue(value);
-        if ( !value.matches("\\d{1,4}/\\d{1,2}/\\d{1,2}") ) {
-            throw new FieldValueException("The value of field " + this.fieldName + " must follow the format yyyy/mm/dd");
-        }
-        return value;
-    }
-}
-
-/**
- * 
- * @author racanu
- *
- */
-class NumericFieldDefinition extends DatabaseFieldDefinition {
-    private final int minFieldLength;
-    
-    NumericFieldDefinition(String name, int length, int minLength) {
-        super(name, length);
-        this.minFieldLength = minLength;
-    }
-    
-    @Override
-    String validateValue(String value) throws FieldValueException {
-        value = super.validateValue(value);
-        if ( !value.matches("\\d{" + this.minFieldLength + "," + this.fieldLength + "}") ) {
-            throw new FieldValueException("The value of field " + this.fieldName + " must be a number of at least " 
-                    + this.minFieldLength + " and at most " + this.fieldLength + " digits.");
-        }
-        return value;
-    }
-}
-
-/**
- * 
- * @author racanu
- *
- */
-class OwnerFieldDefinition extends DatabaseFieldDefinition {
-    public static final int FIELD_SIZE = 8;
-    
-    OwnerFieldDefinition(String name) {
-        super(name, FIELD_SIZE);
-    }
-    
-    @Override
-    String validateValue(String value) throws FieldValueException {
-        value = super.validateValue(value);
-        if ( !value.matches("\\d{" + FIELD_SIZE + "}") && (value.length() != 0) ) {
-            throw new FieldValueException(
-                    "The value of field " + this.fieldName 
-                    + " must be a number of exactly " + FIELD_SIZE + " digits "
-                    + " or an empty string.");
-        }
-        return value;
-    }
-}
-
-/**
- * This class encapsulates a field value that is based on a specified field definition.
- * The field definition is passed along in the constructor and is used to validate and format the field's value
- * as well as read it and persist it to the database file.
- * 
- * @author racanu
- *
- */
-class DatabaseFieldValue {
-    private final DatabaseFieldDefinition definition;
-    private String value;
-    
-    DatabaseFieldValue(DatabaseFieldDefinition definition) {
-        this.definition = definition;
-    }
-    
-    void setValue(String value) throws FieldValueException {
-        this.value = definition.validateValue(value);
-    }
-    
-    int getFieldLength() {
-        return definition.fieldLength;
-    }
-    
-    String getValue() {
-        return value;
-    }
-    
-    void readValue(DataInput di) throws DatabaseException {
-        value = definition.readFieldValue(di);
-    }
-    
-    void writeValue(DataOutput dout) throws DatabaseException {
-        definition.writeFieldValue(dout, this.value);
-    }
-
-    @Override
-    public String toString() {
-        return String.format("%-"+ definition.fieldLength + "s", value);
-    }
-
 }
 
 /**
@@ -236,13 +133,13 @@ class DatabaseRecord {
     private static final int magicCookie = 259;
 
     private static final DatabaseFieldDefinition[] fields = {
-            new DatabaseFieldDefinition("name", 64),
-            new DatabaseFieldDefinition("location", 64),
-            new NumericFieldDefinition("size", 4, 0),
-            new YesNoFieldDefinition("smoking"),
-            new DatabaseFieldDefinition("rate", 8),
-            new DateFieldDefinition("date"),
-            new OwnerFieldDefinition("owner")
+        new DatabaseFieldDefinition("name", 64),
+        new DatabaseFieldDefinition("location", 64),
+        new DatabaseFieldDefinition("size", 4),
+        new DatabaseFieldDefinition("smoking", 1),
+        new DatabaseFieldDefinition("rate", 8),
+        new DatabaseFieldDefinition("date", 10),
+        new DatabaseFieldDefinition("owner", 8)
     };
     private static final short recordSize;
     
@@ -253,7 +150,7 @@ class DatabaseRecord {
         }
         recordSize = rs;
     }
-    
+
     static DatabaseFieldDefinition getFieldDefinition(short index) {
         if (index < fields.length) {
             return fields[index];
@@ -262,15 +159,6 @@ class DatabaseRecord {
         }
     }
 
-    static short indexOfField(String name) throws SchemaException {
-        for (short i = 0; i < fields.length; i++) {
-            if (fields[i].getFieldName().equals(name)) {
-                return i;
-            }
-        }
-        throw new SchemaException("Field \"" + name + "\" not found.");
-    }
-    
     static short getNumberOfFields() {
         return (short)fields.length;
     }
@@ -279,7 +167,7 @@ class DatabaseRecord {
         return recordSize;
     }
     
-    static void skipSchema(DataInput di) throws SchemaException {
+    static void skipSchema(DataInput di) throws DatabaseRuntimeException {
         // This is just a semantic method. 
         // We could implement an actual skipping (i.e. moving the file pointer) 
         // but for simplicity's sake we choose to just read the schema.
@@ -290,50 +178,55 @@ class DatabaseRecord {
         readSchema(di);
     }
     
-    static void readSchema(DataInput di) throws SchemaException {
+    static void readSchema(DataInput di) throws DatabaseRuntimeException {
         try {
             int mc = di.readInt();
             if (mc != magicCookie) { 
-                throw new SchemaException("Incorrect magic cookie. " 
+                throw new DatabaseRuntimeException("Incorrect magic cookie. " 
                         + "Expected " + magicCookie + " encountered " + mc);
             }
             
             short fpr = di.readShort();
             if (fpr != fields.length) {
-                throw new SchemaException("Incorrect number of fields per record. " 
+                throw new DatabaseRuntimeException("Incorrect number of fields per record. " 
                         + "Expected " + fields.length + "encountered " + fpr);
             }
             
             for (short i = 0; i < fields.length; i++ ) {
-                fields[i].readFieldDefinition(di);
+                fields[i].readAndCheckFieldDefinition(di);
             }
         } catch (EOFException e) {
-            throw new SchemaException("EOF while reading schema.");
+            throw new DatabaseRuntimeException("EOF encountered while reading schema from database file.");
         } catch (IOException e) {
-            throw new SchemaException("IOException while reading schema.");
+            throw new DatabaseRuntimeException("IO exception encountered while reading schema from database file.");
         }
     }
     
-    static void validateRecord(String[] record) throws DatabaseException {
-        if (record.length != fields.length) 
-            throw new RecordFormatException("The record supplied doesn't have the required number of fields.");
-        
-        for (short i = 0; i < fields.length; i++) {
-            record[i] = fields[i].validateValue(record[i]);
-        }
-    }
-    
-    static DatabaseRecord readRecord(DataInput di) throws DatabaseException {
+    /**
+     * Reads a record from the database file using the provided DataInput stream.
+     * 
+     * @param di
+     * @return
+     * @throws DatabaseRuntimeException
+     */
+    static DatabaseRecord readRecord(DataInput di) throws DatabaseRuntimeException {
         DatabaseRecord dr = new DatabaseRecord();
         dr.read(di);
         return dr;
     }    
     
-    static void skipRecord(DataInput di) throws DatabaseException{
+    /**
+     * Skips a record by moving the file pointer forward a number of bytes equals to the size of the record.
+     * 
+     * @param di
+     * @return
+     * @throws DatabaseRuntimeException
+     */
+    static void skipRecord(DataInput di) throws DatabaseRuntimeException{
         try {
             di.skipBytes(DatabaseRecord.getRecordSize());
         } catch (IOException e) {
-            throw new DatabaseException("IOException while skipping record.");
+            throw new DatabaseRuntimeException("IO exception while skipping record.");
         }
     }
     
@@ -344,14 +237,7 @@ class DatabaseRecord {
     private long lockCookie = 0;
     private boolean dirty = true;
     private byte flag;
-    private final DatabaseFieldValue[] values;
-    
-    DatabaseRecord() {
-        this.values = new DatabaseFieldValue[fields.length];
-        for (short i = 0; i < this.values.length; i++) {
-            this.values[i] = new DatabaseFieldValue(fields[i]);
-        }
-    }
+    private final String[] values = new String[fields.length];
     
     void setRecordDirty() { this.dirty = true; }
     boolean isRecordDirty() { return this.dirty == true; }
@@ -362,6 +248,14 @@ class DatabaseRecord {
     void setRecordDeleted() { this.flag = (byte)0xFF; }
     boolean isRecordDeleted() { return this.flag == (byte)0xFF; }
 
+    /**
+     * Locks the record for exclusive access by the holder of the given cookie.
+     * All subsequent operations on this record must provide this cookie.
+     * The record can only be locked by one entity at a time. So only one cookie is active at any time.
+     * When attempting to lock an already locked record, the thread will be put to sleep.
+     * 
+     * @param cookie The value that allows the holder of it to access the record while it is locked.
+     */
     synchronized void lock(long cookie) {
         try {
             //TODO: while ???
@@ -376,6 +270,14 @@ class DatabaseRecord {
         }
     }
     
+    /**
+     * Unlocks a previously locked record, releasing it for changes.
+     * To unlock the record, the owner of it must provide the cookie it used when locking it.
+     * 
+     * @param cookie The cookie that was used to lock the record.
+     * @throws SecurityException When attempting to unlock a record that is not locked 
+     * or using a cookie other than the one used for locking it.
+     */
     synchronized void unlock(long cookie) throws SecurityException { 
         if (!this.locked || this.lockCookie != cookie)
             throw new SecurityException();
@@ -383,47 +285,64 @@ class DatabaseRecord {
         this.notifyAll();
     } 
 
-    void setRecordValues(long cookie, String[] stringValues) throws DatabaseException {
+    /**
+     * Takes a list of values in the form of an array of String and updates the fields
+     * of the record with them. Leading and trailing spaces are trimmed off. Values that
+     * are too long to fit in the corresponding field are silently truncated.
+     * 
+     * @param cookie The cookie that was used to lock the record. 
+     * @param stringValues An array of field values for the record.
+     * The order of values or the format of them is not checked in any way.
+     * The fields are updated in the order they are present in the database.
+     * If less values are provided than fields, only the first fields will be updated.
+     * If more values are provided than fields, excess values will be ignored. 
+     * 
+     * @throws SecurityException When attempting to update a record that is not locked 
+     * or that is locked with a cookie other than the one used for locking it.
+     */
+    void setRecordValues(long cookie, String[] stringValues) throws SecurityException {
         if (!this.locked || this.lockCookie != cookie) {
             throw new SecurityException();
         }
         
-        if (stringValues.length != this.values.length) {
-            throw new SchemaException("The number of values suplied (" + values.length + ")" 
-                    + " doesn't match the number of fields (" + this.values.length + ".");
+        try {
+            for (short i = 0; i < this.values.length; i++)
+            {
+                this.values[i] = fields[i].fitValue(stringValues[i]);
+            }
+            this.setRecordDirty();
+        } catch (NullPointerException e) {
+            // Do nothing; we can't report the error upstream
+            // When receiving a null (empty) array, we leave the record unchanged
+            // and don't even set the dirty flag
+        } catch (ArrayIndexOutOfBoundsException e) {
+            // Do nothing; we can't report the error upstream
+            // When receiving less values than what we need, 
+            // we set the first values and leave the rest unchanged 
+            this.setRecordDirty();
         }
-        
-        for (short i = 0; i < this.values.length; i++)
-        {
-            this.values[i].setValue(stringValues[i]);
-        }
-        this.setRecordDirty();
     }
     
+    /**
+     * Returns the values in the record as an array of strings.
+     * Leading and trailing spaces are not present in the values (trimmed off).
+     *  
+     * @return The list of values in as an array of String,
+     * in the order of the fields as they are found in the database file.
+     */
     String[] getRecordValues() {
-        String[] stringValues = new String[this.values.length];
-        
-        for (short i = 0; i < this.values.length; i++)
-        {
-            stringValues[i] = this.values[i].getValue();
-        }
+        String[] stringValues = values.clone();
         return stringValues; 
     }
     
-    void setFieldValue(long cookie, short index, String value) throws DatabaseException { 
-        if (!this.locked || this.lockCookie != cookie) {
-            throw new SecurityException();
-        }
-
-        this.getField(index).setValue(value);
-        this.setRecordDirty();
-    }
-    
-    String getFieldValue(int index) throws SchemaException {
-        return this.getField(index).getValue();
-    }
-
-    void read(DataInput di) throws DatabaseException {
+    /**
+     * Reads the values for the current record from the database file using the provided DataInput.
+     * The amount of bytes read from the file is the same for each record and is known beforehand.
+     * 
+     * @param di The DataInput stream associated with the database file.
+     * @throws DatabaseRuntimeException
+     */
+    void read(DataInput di) {
         //TODO: Cannot read or write while locked
         // if (this.locked) throw new SecurityException();
 
@@ -434,26 +353,30 @@ class DatabaseRecord {
             } else if (flag==(byte)0xFF) {
                 this.setRecordDeleted();
             } else {
-                throw new RecordFormatException("Invalid record flag. Expected 0 or 255. Found " + flag);
+                // Ignore the error.
             }
 
             for (short i = 0; i < values.length; i++) {
-                values[i].readValue(di);
+                values[i] = fields[i].readFieldValue(di);
             }
+            // In case any errors occur, the record will not be marked clean
+            // and will be written to the database file at the first update
             this.setRecordClean();
         } catch (EOFException e) {
-            throw new RecordFormatException("EOF while reading record.");
+            // Ignore the error. Just print it to the console.
+            e.printStackTrace();
         } catch (IOException e) {
-            throw new RecordFormatException("IOException while reading record.");
+            // Ignore the error. Just print it to the console.
+            e.printStackTrace();
         }
     }    
 
-    void write(DataOutput dout) throws DatabaseException {
+    void write(DataOutput dout) throws DatabaseRuntimeException {
         //TODO: Cannot read or write while locked
         // if (this.locked) throw new SecurityException();
         
         for (short i = 0; i < values.length; i++) {
-            values[i].writeValue(dout);
+            fields[i].writeFieldValue(dout, values[i]);
         }
         this.setRecordClean();
     }
@@ -463,22 +386,10 @@ class DatabaseRecord {
         StringBuilder sb = new StringBuilder();
         sb.append((this.isRecordDirty()?"*":" ") + (this.isRecordValid()?"V":"D") + " ");
         for (short f = 0; f < DatabaseRecord.getNumberOfFields(); f++) {
-            sb.append(this.values[f] + " ");
+            sb.append(String.format("%-" + fields[f].getFieldLength() + "s", this.values[f]) + " ");
         }
         return sb.toString();
     }
-
-    private DatabaseFieldValue getField(int index) throws SchemaException {
-        assert index >= 0;
-        assert index < fields.length;
-
-        if (index < 0 || index >= fields.length) {
-            throw new SchemaException("Field #" + index + " doesn't exist. Valid range [0," + fields.length + "]");
-        }
-
-        return this.values[index];
-    }
-
 }
 
 /**
@@ -556,7 +467,7 @@ public class Data implements DB {
     private final static AutoIncrementNumberGenerator lockCookieGenerator 
         = new AutoIncrementNumberGenerator();
     
-    public Data(String dbPath) throws DatabaseException {
+    public Data(String dbPath) throws DatabaseRuntimeException {
         super();
   
         // Reads the given database file and fills the memory cache with its content, possibly throwing a DatabaseException
@@ -564,7 +475,7 @@ public class Data implements DB {
             readData(dbPath);
             this.dbPath = dbPath;
         } catch (Exception e) {
-            throw new DatabaseException("Some error occured while reading the database. Check the path and file.");
+            throw new DatabaseRuntimeException("Some error occured while reading the database. Check the path and file.");
         }
     }
   
@@ -591,7 +502,11 @@ public class Data implements DB {
             DatabaseRecord dr = dataByRecordNumber.get(recNo);
             dr.setRecordValues(lockCookie, data);
             this.writeData(this.dbPath);
-        } catch (DatabaseException e) {
+        } catch (SecurityException e) {
+            throw e;
+        } catch (DatabaseRuntimeException e) {
+            // All other DatabaseExceptions are silently ignored
+            // because the interface does not allow reporting them
             e.printStackTrace();
         } catch (NullPointerException e) {
             throw new RecordNotFoundException();
@@ -662,7 +577,7 @@ public class Data implements DB {
         }
     }
 
-    private void readData(String dbPath) throws DatabaseException {
+    private void readData(String dbPath) throws DatabaseRuntimeException {
         try {
             RandomAccessFile raf = new RandomAccessFile(dbPath,"rws");
             
@@ -676,13 +591,13 @@ public class Data implements DB {
             }
             raf.close();
         } catch (FileNotFoundException e) {
-            throw new DatabaseException("FileNotFoundException while reading database.");
+            throw new DatabaseRuntimeException("FileNotFoundException while reading database.");
         } catch (IOException e) {
-            throw new DatabaseException("IOException while reading database.");
+            throw new DatabaseRuntimeException("IOException while reading database.");
         }
     }
     
-    private void writeData(String dbPath) throws DatabaseException {
+    private void writeData(String dbPath) throws DatabaseRuntimeException {
         try {
             RandomAccessFile raf = new RandomAccessFile(dbPath,"rws");
             // This will place the file pointer on the first record
@@ -706,7 +621,7 @@ public class Data implements DB {
                 System.out.println("Written " + dirtyCount + " dirty record(s) to the database file.");
             }
         } catch (FileNotFoundException e) {
-            throw new DatabaseException("FileNotFoundException while writing database file.");
+            throw new DatabaseRuntimeException("FileNotFoundException while writing database file.");
         }
     }
 }

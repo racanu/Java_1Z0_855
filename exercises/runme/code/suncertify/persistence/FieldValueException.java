@@ -1,6 +1,6 @@
-package suncertify.db;
+package suncertify.persistence;
 
-public class FieldValueException extends DatabaseException {
+public class FieldValueException extends PersistenceException {
     /**
      * 
      */

@@ -1,6 +1,6 @@
-package suncertify.db;
+package suncertify.persistence;
 
-public class SecurityException extends Exception {
+public class SecurityException extends PersistenceException {
     /**
      * 
      */

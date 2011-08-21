@@ -1,6 +1,6 @@
-package suncertify.db;
+package suncertify.persistence;
 
-public class RecordFormatException extends DatabaseException {
+public class RecordFormatException extends PersistenceException {
     /**
      * 
      */

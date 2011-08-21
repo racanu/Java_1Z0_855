@@ -1,6 +1,7 @@
 package suncertify.client;
 
 import suncertify.db.*;
+import suncertify.db.SecurityException;
 
 public class CommandLineClient {
 
@@ -17,18 +18,33 @@ public class CommandLineClient {
             // Simulate random changes
             for (int i = 0; i < 100; i++) {
                 int k = (int)Math.floor(Math.random() * db.getRecordCount());
+                System.out.println("Updating record #" + k + ".");
+                long cookie = 0;
                 try {
-                    System.out.println("Updating record #" + k + ".");
-                    long cookie = db.lock(k);
-                    db.update(k, db.read(k), cookie);
-                    db.unlock(k, cookie);
                     Thread.sleep(Math.round(Math.random() * 1000));
-                } catch (suncertify.db.SecurityException e) {
+                    cookie = db.lock(k); 
+                    String[] v = db.read(k);
+                    // v[4] = "\u00A5111.11";
+                    // v[6] = "12345bla";
+                    db.update(k, v, cookie);
+                } catch (SecurityException e) {
                     e.printStackTrace();
-                } catch (DatabaseException e) {
-                    // do nothing
+                    break;
+                } catch (RecordNotFoundException e) {
+                    e.printStackTrace();
+                    break;
                 } catch (InterruptedException e) {
                     // do nothing
+                } finally {
+                    try {
+                        db.unlock(k, cookie);
+                    } catch (SecurityException e) {
+                        e.printStackTrace();
+                        break;
+                    } catch (RecordNotFoundException e) {
+                        e.printStackTrace();
+                        break;
+                    }
                 }
             }
             System.out.println("RandomUpdater ended.");
@@ -52,7 +68,7 @@ public class CommandLineClient {
             ru.start();
             ru.join();
             db.printDataCache();
-        } catch (DatabaseException e) {
+        } catch (DatabaseRuntimeException e) {
             e.printStackTrace();
         } catch (InterruptedException e) {
             //
